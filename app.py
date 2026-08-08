@@ -31,11 +31,11 @@ def load_initial_data():
     types = ['Official Ad', 'Influencer / KOL']
     sample_codes = ['MELB20', 'DIDI_KOL_01', 'SUMMER30', 'APP_POP_10', 'TIKTOK_FUN']
     
-    # External Context Options
-    weather_opts = ['Sunny', 'Cloudy', 'Rainy', 'Extreme Weather']
-    weather_probs = [0.5, 0.3, 0.15, 0.05]
-    transit_opts = ['Normal', 'Train Shutdown / Strike', 'Major Event (e.g. Concert)']
-    transit_probs = [0.8, 0.1, 0.1]
+    # Combined Context & Employee Tracking
+    context_opts = ['Normal', 'Rainy / Extreme Weather', 'Train Shutdown / Strike', 'Major Event (e.g. Concert)']
+    context_probs = [0.6, 0.2, 0.1, 0.1]
+    employees = ['Sharon', 'David', 'System_Auto']
+    employee_probs = [0.6, 0.3, 0.1]
 
     data = []
     for d in date_range:
@@ -51,14 +51,14 @@ def load_initial_data():
             tier = np.random.choice(tiers)
             code = np.random.choice(sample_codes)
             
-            weather = np.random.choice(weather_opts, p=weather_probs)
-            transit = np.random.choice(transit_opts, p=transit_probs)
+            context_status = np.random.choice(context_opts, p=context_probs)
+            entered_by = np.random.choice(employees, p=employee_probs)
             
             clicks = np.random.randint(500, 5000)
             redeemed = int(clicks * np.random.uniform(0.2, 0.6))
             
-            # Boost trips if it's raining or train is shut down
-            if weather in ['Rainy', 'Extreme Weather'] or transit == 'Train Shutdown / Strike':
+            # Boost trips if bad weather or train shutdown
+            if context_status in ['Rainy / Extreme Weather', 'Train Shutdown / Strike']:
                 trips = int(redeemed * np.random.uniform(0.7, 0.95))
             else:
                 trips = int(redeemed * np.random.uniform(0.4, 0.75))
@@ -74,12 +74,12 @@ def load_initial_data():
                 'Campaign_Type': camp_type,
                 'Voucher_Tier': tier,
                 'Promo_Code': code,
-                'Weather': weather,
-                'Transit_Status': transit,
+                'Context_Status': context_status,
                 'Clicks': clicks,
                 'Redeemed_Vouchers': redeemed,
                 'Actual_Trips': trips,
-                'New_Customers': new_cust
+                'New_Customers': new_cust,
+                'Entered_By': entered_by
             })
             
     df = pd.DataFrame(data)
@@ -110,7 +110,10 @@ elif 12 <= current_hour < 18:
 else:
     greeting = "Good evening"
 
-st.markdown(f"### {greeting}, Sharon! 👋")
+# The Current User logged in
+current_user = "Sharon"
+
+st.markdown(f"### {greeting}, {current_user}! 👋")
 st.title("🚗 DiDi Central Data & Reporting Framework")
 
 tab1, tab2, tab3, tab4 = st.tabs([
@@ -144,8 +147,8 @@ with tab1:
         in_code = st.text_input("Promo Code / Influencer Name", value="KOL_ALISHA_20")
         
     with col3:
-        in_weather = st.selectbox("Weather Condition", ['Sunny', 'Cloudy', 'Rainy', 'Extreme Weather'])
-        in_transit = st.selectbox("Transit / City Status", ['Normal', 'Train Shutdown / Strike', 'Major Event (e.g. Concert)'])
+        in_context = st.selectbox("Special Weather / Transit Status", ['Normal', 'Rainy / Extreme Weather', 'Train Shutdown / Strike', 'Major Event (e.g. Concert)'])
+        in_user = st.text_input("Entered By (Audit Tracker)", value=current_user, disabled=True)
         
     with col4:
         in_clicks = st.number_input("Total Clicks / Impressions", min_value=0, value=1500)
@@ -163,15 +166,15 @@ with tab1:
             'Campaign_Type': in_type,
             'Voucher_Tier': in_tier,
             'Promo_Code': in_code.upper().strip(),
-            'Weather': in_weather,
-            'Transit_Status': in_transit,
+            'Context_Status': in_context,
             'Clicks': int(in_clicks),
             'Redeemed_Vouchers': int(in_red),
             'Actual_Trips': int(in_trips),
-            'New_Customers': int(in_new_cust)
+            'New_Customers': int(in_new_cust),
+            'Entered_By': in_user
         }])
         st.session_state.db = pd.concat([st.session_state.db, new_row], ignore_index=True)
-        st.success(f"✅ Data for Code **{in_code.upper()}** added successfully!")
+        st.success(f"✅ Data for Code **{in_code.upper()}** added successfully by {in_user}!")
 
 # ------------------------------------------
 # TAB 2: DATA MANAGEMENT & SEARCH PORTAL (BATCH DELETE)
@@ -206,10 +209,9 @@ with tab2:
         
     filtered_mgt_df = df_mgt[mask].sort_values(by='Timestamp', ascending=False).reset_index(drop=True)
     
-    st.markdown(f"Displaying **{len(filtered_mgt_df)}** matching records. Use the checkboxes to select records for deletion.")
+    st.markdown(f"Displaying **{len(filtered_mgt_df)}** matching records. Check 'Entered_By' to track data origin. Use checkboxes to batch delete.")
     
-    # 建立勾選框資料編輯器
-    filtered_mgt_df.insert(0, "Select", False) # 插入一個 Select 的 Boolean 列
+    filtered_mgt_df.insert(0, "Select", False)
     
     edited_df = st.data_editor(
         filtered_mgt_df,
@@ -221,14 +223,12 @@ with tab2:
         use_container_width=True
     )
     
-    # 提取被選中的記錄
     selected_rows = edited_df[edited_df['Select']]
     
     if not selected_rows.empty:
         st.warning(f"⚠️ You have selected {len(selected_rows)} records. This action cannot be undone.")
         if st.button("🗑️ Batch Delete Selected Records", type="primary"):
             ids_to_delete = selected_rows['Entry_ID'].tolist()
-            # 基於 Entry_ID 從主資料庫中刪除
             st.session_state.db = st.session_state.db[~st.session_state.db['Entry_ID'].isin(ids_to_delete)].reset_index(drop=True)
             st.success(f"✅ Successfully deleted {len(ids_to_delete)} record(s)!")
             st.rerun()
@@ -353,8 +353,8 @@ with tab3:
 # TAB 4: PREDICTIVE INSIGHTS & CONTEXT
 # ------------------------------------------
 with tab4:
-    st.subheader("Discover Correlation between Marketing, Weather & City Transit")
-    st.markdown("This module analyzes historical patterns to predict when promo codes yield the highest conversion rates.")
+    st.subheader("Discover Correlation between Marketing, Context & Discounts")
+    st.markdown("This module analyzes historical patterns to predict when and how promo codes yield the highest conversion rates.")
     
     df_pred = st.session_state.db.copy()
     if df_pred.empty:
@@ -365,29 +365,29 @@ with tab4:
         col_p1, col_p2 = st.columns(2)
         
         with col_p1:
-            agg_weather = df_pred.groupby('Weather')['Conversion_Rate'].mean().reset_index()
-            fig_weather = px.bar(
-                agg_weather, x='Weather', y='Conversion_Rate', 
-                title="Avg. Conversion Rate by Weather", 
+            agg_context = df_pred.groupby('Context_Status')['Conversion_Rate'].mean().reset_index()
+            fig_context = px.bar(
+                agg_context, x='Context_Status', y='Conversion_Rate', 
+                title="Avg. Conversion Rate by Special Context", 
                 text_auto='.1f', color='Conversion_Rate', color_continuous_scale="Oranges"
             )
-            fig_weather.update_layout(yaxis_title="Conversion Rate (%)")
-            st.plotly_chart(fig_weather, use_container_width=True)
+            fig_context.update_layout(yaxis_title="Conversion Rate (%)")
+            st.plotly_chart(fig_context, use_container_width=True)
             
         with col_p2:
-            agg_transit = df_pred.groupby('Transit_Status')['Conversion_Rate'].mean().reset_index()
-            fig_transit = px.bar(
-                agg_transit, x='Transit_Status', y='Conversion_Rate', 
-                title="Avg. Conversion Rate by Transit Status", 
+            agg_tier = df_pred.groupby('Voucher_Tier')['Conversion_Rate'].mean().reset_index()
+            fig_tier = px.bar(
+                agg_tier, x='Voucher_Tier', y='Conversion_Rate', 
+                title="Avg. Conversion Rate by Voucher Tier", 
                 text_auto='.1f', color='Conversion_Rate', color_continuous_scale="Blues"
             )
-            fig_transit.update_layout(yaxis_title="Conversion Rate (%)")
-            st.plotly_chart(fig_transit, use_container_width=True)
+            fig_tier.update_layout(yaxis_title="Conversion Rate (%)")
+            st.plotly_chart(fig_tier, use_container_width=True)
 
         st.markdown("### 💡 Automated Insights & Recommendations")
-        st.info("Based on your historical database, the system generated the following recommendations:")
+        st.info("Based on your historical database, the system generated the following predictive recommendations:")
         st.markdown("""
-        * **Rainy / Extreme Weather Effect**: Ride-hailing demand naturally surges during bad weather. Consider distributing **lower tier vouchers (e.g., 10% Off)** during rain, as conversion rates remain high naturally, saving marketing budget.
-        * **Train Shutdowns & Strikes**: When public transit fails, DiDi becomes the primary alternative. Push **App Pop-up Banners and Push Notifications** immediately during these events.
-        * **Weekend & Night Peak (21:00 - 23:59)**: Deploy targeted **Influencer Promo Codes** on Instagram and TikTok during weekend night hours to maximize the Gen Z and Millennial rider segments going to events.
+        * **Rainy / Train Shutdown Effect**: Ride-hailing demand naturally surges during bad weather or transit strikes. Consider distributing **lower tier vouchers (e.g., 10% Off)** during these periods, as conversion rates remain naturally high, effectively saving your marketing budget.
+        * **Weekend & Night Peak (21:00 - 23:59)**: Deploy targeted **Influencer Promo Codes** on Instagram and TikTok during weekend night hours to maximize the Gen Z and Millennial rider segments traveling to events.
+        * **Discount Depth Strategy**: While 50% Off yields the highest conversion, 20% Off often provides the optimal balance between high conversion and protecting profit margins (Margin Erosion).
         """)
