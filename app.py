@@ -100,8 +100,17 @@ placement_mapping = {
 }
 
 # ==========================================
-# 2. UI Layout
+# 2. UI Layout & Dynamic Greeting
 # ==========================================
+current_hour = datetime.now().hour
+if current_hour < 12:
+    greeting = "Good morning"
+elif 12 <= current_hour < 18:
+    greeting = "Good afternoon"
+else:
+    greeting = "Good evening"
+
+st.markdown(f"### {greeting}, Sharon! 👋")
 st.title("🚗 DiDi Central Data & Reporting Framework")
 
 tab1, tab2, tab3, tab4 = st.tabs([
@@ -165,10 +174,10 @@ with tab1:
         st.success(f"✅ Data for Code **{in_code.upper()}** added successfully!")
 
 # ------------------------------------------
-# TAB 2: DATA MANAGEMENT & SEARCH PORTAL
+# TAB 2: DATA MANAGEMENT & SEARCH PORTAL (BATCH DELETE)
 # ------------------------------------------
 with tab2:
-    st.subheader("Search, Filter, and Delete Database Entries")
+    st.subheader("Search, Filter, and Manage Database Entries")
     
     col_s1, col_s2, col_s3, col_s4 = st.columns(4)
     with col_s1:
@@ -195,28 +204,34 @@ with tab2:
     if search_code:
         mask = mask & (df_mgt['Promo_Code'].str.contains(search_code.upper(), na=False))
         
-    filtered_mgt_df = df_mgt[mask].sort_values(by='Timestamp', ascending=False)
+    filtered_mgt_df = df_mgt[mask].sort_values(by='Timestamp', ascending=False).reset_index(drop=True)
     
-    st.markdown(f"Displaying **{len(filtered_mgt_df)}** matching records.")
-    st.dataframe(filtered_mgt_df, use_container_width=True)
+    st.markdown(f"Displaying **{len(filtered_mgt_df)}** matching records. Use the checkboxes to select records for deletion.")
     
-    st.markdown("---")
-    st.markdown("### 🗑️ Delete Specific Records")
-    st.error("Warning: Deleting records is irreversible.")
+    # 建立勾選框資料編輯器
+    filtered_mgt_df.insert(0, "Select", False) # 插入一個 Select 的 Boolean 列
     
-    del_col1, del_col2 = st.columns([3, 1])
-    with del_col1:
-        ids_to_delete = st.multiselect("Select Entry_ID(s) to Delete", filtered_mgt_df['Entry_ID'].tolist())
-    with del_col2:
-        st.write("") # Spacing
-        st.write("")
-        if st.button("Delete Selected ID(s)", type="primary", use_container_width=True):
-            if ids_to_delete:
-                st.session_state.db = st.session_state.db[~st.session_state.db['Entry_ID'].isin(ids_to_delete)].reset_index(drop=True)
-                st.success(f"✅ Successfully deleted {len(ids_to_delete)} record(s)!")
-                st.rerun()
-            else:
-                st.warning("Please select at least one Entry_ID to delete.")
+    edited_df = st.data_editor(
+        filtered_mgt_df,
+        column_config={
+            "Select": st.column_config.CheckboxColumn("Select", help="Select to delete", default=False)
+        },
+        disabled=[col for col in filtered_mgt_df.columns if col != "Select"],
+        hide_index=True,
+        use_container_width=True
+    )
+    
+    # 提取被選中的記錄
+    selected_rows = edited_df[edited_df['Select']]
+    
+    if not selected_rows.empty:
+        st.warning(f"⚠️ You have selected {len(selected_rows)} records. This action cannot be undone.")
+        if st.button("🗑️ Batch Delete Selected Records", type="primary"):
+            ids_to_delete = selected_rows['Entry_ID'].tolist()
+            # 基於 Entry_ID 從主資料庫中刪除
+            st.session_state.db = st.session_state.db[~st.session_state.db['Entry_ID'].isin(ids_to_delete)].reset_index(drop=True)
+            st.success(f"✅ Successfully deleted {len(ids_to_delete)} record(s)!")
+            st.rerun()
 
 # ------------------------------------------
 # TAB 3: REPORT GENERATOR
@@ -258,10 +273,10 @@ with tab3:
         else: # Custom Date & Time Range
             st.markdown("##### Custom Time Selector")
             cc1, cc2, cc3, cc4 = st.columns(4)
-            with cc1: c_sd = st.date_input("Start Date", today - timedelta(days=3))
-            with cc2: c_st = st.time_input("Start Time", time(18, 0))
-            with cc3: c_ed = st.date_input("End Date", today)
-            with cc4: c_et = st.time_input("End Time", time(23, 59))
+            with cc1: c_sd = st.date_input("Start Date", today - timedelta(days=3), key="c_sd")
+            with cc2: c_st = st.time_input("Start Time", time(18, 0), key="c_st")
+            with cc3: c_ed = st.date_input("End Date", today, key="c_ed")
+            with cc4: c_et = st.time_input("End Time", time(23, 59), key="c_et")
             s_dt = datetime.combine(c_sd, c_st)
             e_dt = datetime.combine(c_ed, c_et)
                 
@@ -345,7 +360,6 @@ with tab4:
     if df_pred.empty:
         st.warning("Not enough data to generate insights.")
     else:
-        # Calculate individual conversion rates safely
         df_pred['Conversion_Rate'] = (df_pred['Actual_Trips'] / df_pred['Redeemed_Vouchers'] * 100).fillna(0)
         
         col_p1, col_p2 = st.columns(2)
