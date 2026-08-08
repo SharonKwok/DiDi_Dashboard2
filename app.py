@@ -19,9 +19,11 @@ def load_initial_data():
     platforms_config = {
         'Instagram': ['Story', 'Post', 'Reels'],
         'TikTok': ['In-Feed Video', 'TopView', 'Spark Ad'],
-        'App': ['Pop-up Banner', 'Notification', 'Home Banner'],
-        'Email': ['Weekly Newsletter', 'Dormant User Blast', 'VIP Dedicated'],
-        'Other': ['General / Partner']
+        'DiDi_App': ['Pop-up Banner', 'Push Notification', 'Home Carousel'],
+        'YouTube': ['Pre-roll Ad', 'Mid-roll Ad', 'YouTube Shorts'],
+        'Snapchat': ['Snap Ad', 'Story Ad', 'AR Lens Filter'],
+        'Meta Ads': ['Facebook Feed', 'Messenger', 'Audience Network'],
+        'Quoll Email': ['Weekly Newsletter', 'Dormant User Blast', 'VIP Dedicated']
     }
     
     tiers = ['10% Off', '20% Off', '30% Off', '50% Off']
@@ -64,11 +66,13 @@ if 'db' not in st.session_state:
 
 # Dynamic options for placements based on Platform
 placement_mapping = {
-    'Instagram': ['Story', 'Post', 'Reels', 'Bio Link'],
+    'Instagram': ['Story', 'Post', 'Reels'],
     'TikTok': ['In-Feed Video', 'TopView', 'Spark Ad'],
-    'App': ['Pop-up Banner', 'Push Notification', 'Home Carousel'],
-    'Email': ['Weekly Newsletter', 'Dormant User Blast', 'VIP Dedicated'],
-    'Other': ['Offline Flyer', 'Partner Promotion', 'General']
+    'DiDi_App': ['Pop-up Banner', 'Push Notification', 'Home Carousel'],
+    'YouTube': ['Pre-roll Ad', 'Mid-roll Ad', 'YouTube Shorts'],
+    'Snapchat': ['Snap Ad', 'Story Ad', 'AR Lens Filter'],
+    'Meta Ads': ['Facebook Feed', 'Messenger', 'Audience Network'],
+    'Quoll Email': ['Weekly Newsletter', 'Dormant User Blast', 'VIP Dedicated']
 }
 
 # ==========================================
@@ -91,24 +95,30 @@ with tab1:
     
     with col1:
         in_date = st.date_input("Date", date.today())
-        in_plat = st.selectbox("Platform", ['Instagram', 'TikTok', 'App', 'Email', 'Other'])
-        in_area = st.selectbox("Placement Area", placement_mapping[in_plat])
+        in_plat = st.selectbox("Platform", ['Instagram', 'TikTok', 'DiDi_App', 'YouTube', 'Snapchat', 'Meta Ads', 'Quoll Email', 'Other'])
         
+        if in_plat == 'Other':
+            final_plat = st.text_input("Please specify the custom Platform", value="Local Forum")
+            in_area = st.text_input("Please specify the Placement Area", value="General Post")
+        else:
+            final_plat = in_plat
+            in_area = st.selectbox("Placement Area", placement_mapping[in_plat])
+            
     with col2:
         in_type = st.radio("Campaign Type", ['Official Ad', 'Influencer / KOL'], horizontal=True)
         in_tier = st.selectbox("Voucher Tier", ['10% Off', '20% Off', '30% Off', '50% Off'])
-        in_code = st.text_input("Promo Code Name", value="DIDI_PROMO_2026")
+        in_code = st.text_input("Promo Code Name (e.g., KOL_NAME_20)", value="DIDI_PROMO_2026")
         
     with col3:
-        in_clicks = st.number_input("Total Clicks / Opens", min_value=0, value=1000)
-        in_red = st.number_input("Vouchers Redeemed", min_value=0, value=450)
-        in_trips = st.number_input("Actual Trips Completed", min_value=0, value=300)
+        in_clicks = st.number_input("Total Clicks / Impressions", min_value=0, value=1000)
+        in_red = st.number_input("Vouchers Redeemed (Claimed)", min_value=0, value=450)
+        in_trips = st.number_input("Actual Trips (Vouchers Successfully Used)", min_value=0, value=300)
         in_new_cust = st.number_input("New Customers Generated", min_value=0, value=120)
         
     if st.button("Submit Data", type="primary"):
         new_row = pd.DataFrame([{
             'Date': pd.to_datetime(in_date),
-            'Platform': in_plat,
+            'Platform': final_plat,
             'Placement_Area': in_area,
             'Campaign_Type': in_type,
             'Voucher_Tier': in_tier,
@@ -119,7 +129,7 @@ with tab1:
             'New_Customers': int(in_new_cust)
         }])
         st.session_state.db = pd.concat([st.session_state.db, new_row], ignore_index=True)
-        st.success(f"✅ Data for Code **{in_code.upper()}** on {in_plat} ({in_area}) added successfully!")
+        st.success(f"✅ Data for Code **{in_code.upper()}** on {final_plat} ({in_area}) added successfully!")
         st.dataframe(st.session_state.db.tail(5))
 
 # ------------------------------------------
@@ -134,11 +144,13 @@ with tab2:
     with col_s2:
         search_end = st.date_input("End Date", date.today(), key="mgt_end")
     with col_s3:
-        filter_plat = st.multiselect("Filter Platform", ['Instagram', 'TikTok', 'App', 'Email', 'Other'], default=['Instagram', 'TikTok', 'App', 'Email', 'Other'])
+        # Get unique platforms dynamically to include any "Other" platforms added by the user
+        all_platforms = st.session_state.db['Platform'].unique().tolist()
+        filter_plat = st.multiselect("Filter Platform", all_platforms, default=all_platforms)
         
     search_code = st.text_input("Search Promo Code / Influencer Name", value="")
     
-    # Filter DataFrame
+    # Filter DataFrame (Keep original index for accurate deletion)
     df_mgt = st.session_state.db.copy()
     mask = (
         (df_mgt['Date'] >= pd.to_datetime(search_start)) & 
@@ -148,9 +160,9 @@ with tab2:
     if search_code:
         mask = mask & (df_mgt['Promo_Code'].str.contains(search_code.upper(), na=False))
         
-    filtered_mgt_df = df_mgt[mask].sort_values(by='Date', ascending=False).reset_index(drop=True)
+    filtered_mgt_df = df_mgt[mask].sort_values(by='Date', ascending=False)
     
-    st.write(f"顯示 **{len(filtered_mgt_df)}** 條符合條件的記錄：")
+    st.write(f"Displaying **{len(filtered_mgt_df)}** matching records:")
     
     # Multi-select for Batch Delete
     filtered_mgt_df['Delete'] = False
@@ -158,18 +170,17 @@ with tab2:
         filtered_mgt_df,
         column_config={"Delete": st.column_config.CheckboxColumn("Select to Delete", default=False)},
         disabled=[c for c in filtered_mgt_df.columns if c != "Delete"],
-        hide_index=True,
         use_container_width=True
     )
     
     rows_to_delete = edited_df[edited_df['Delete'] == True]
     
     if len(rows_to_delete) > 0:
-        if st.button(f"🗑️ 批量刪除選中的 {len(rows_to_delete)} 條數據", type="primary"):
-            # Remove selected rows from st.session_state.db
-            cond = st.session_state.db.index.isin(rows_to_delete.index)
-            st.session_state.db = st.session_state.db[~cond].reset_index(drop=True)
-            st.success("✅ 選中數據已順利刪除！")
+        st.warning(f"⚠️ You have selected {len(rows_to_delete)} records to delete.")
+        if st.button(f"🗑️ Confirm Delete Selected Records"):
+            # Remove selected rows from st.session_state.db using the index
+            st.session_state.db = st.session_state.db.drop(rows_to_delete.index).reset_index(drop=True)
+            st.success("✅ Selected data has been successfully deleted!")
             st.rerun()
 
 # ------------------------------------------
@@ -178,67 +189,123 @@ with tab2:
 with tab3:
     st.subheader("Generate Automated Analytics Reports")
     
-    col_r1, col_r2, col_r3 = st.columns(3)
+    # 1. Date Range & Time Scale Selection
+    col_r1, col_r2 = st.columns([1, 2])
     with col_r1:
-        report_type = st.radio("Select Time Scale", ["Daily", "Weekly", "Monthly", "Yearly", "Custom Date Range"], key="rep_scale")
-    with col_r2:
-        custom_start = st.date_input("Start Date (for Custom)", date.today() - timedelta(days=30), key="rep_start")
-    with col_r3:
-        custom_end = st.date_input("End Date (for Custom)", date.today(), key="rep_end")
+        report_type = st.radio("Select Time Scale", [
+            "Daily (Yesterday)", 
+            "Weekly (Last 7 Days)", 
+            "Monthly (Last 30 Days)", 
+            "Yearly (Last 365 Days)", 
+            "All-Time (Up to Now - May take longer)", 
+            "Custom Date Range"
+        ], key="rep_scale")
         
-    if st.button("Generate Report", type="primary", key="btn_rep"):
+    with col_r2:
+        # Calculate dynamic start and end dates based on selection
+        today = date.today()
+        if report_type == "Daily (Yesterday)":
+            s_date = today - timedelta(days=1)
+            e_date = today
+        elif report_type == "Weekly (Last 7 Days)":
+            s_date = today - timedelta(days=7)
+            e_date = today
+        elif report_type == "Monthly (Last 30 Days)":
+            s_date = today - timedelta(days=30)
+            e_date = today
+        elif report_type == "Yearly (Last 365 Days)":
+            s_date = today - timedelta(days=365)
+            e_date = today
+        elif report_type == "All-Time (Up to Now - May take longer)":
+            s_date = st.session_state.db['Date'].min().date() if not st.session_state.db.empty else today
+            e_date = today
+        else: # Custom Date Range
+            col_c1, col_c2 = st.columns(2)
+            with col_c1:
+                s_date = st.date_input("Start Date (for Custom)", today - timedelta(days=30), key="rep_start")
+            with col_c2:
+                e_date = st.date_input("End Date (for Custom)", today, key="rep_end")
+                
+        st.info(f"📅 **Current Report Range:** {s_date} to {e_date}")
+
+    # 2. Diagram Customization
+    st.markdown("##### 🎨 Customize Report Diagrams")
+    col_type1, col_type2 = st.columns(2)
+    with col_type1:
+        chart_1_type = st.selectbox("Chart 1 Type (Time Trend)", ["Line Chart", "Area Chart", "Bar Chart"])
+    with col_type2:
+        chart_2_type = st.selectbox("Chart 2 Type (Platform Breakdown)", ["Bar Chart", "Line Chart", "Area Chart"])
+
+    # 3. Generate Report Action
+    if st.button("📊 Generate Report", type="primary", key="btn_rep"):
         df = st.session_state.db.copy()
         
-        if report_type == "Custom Date Range":
-            df = df[(df['Date'] >= pd.to_datetime(custom_start)) & (df['Date'] <= pd.to_datetime(custom_end))]
+        # Filter the dataframe by the calculated date range
+        df_filtered = df[(df['Date'] >= pd.to_datetime(s_date)) & (df['Date'] <= pd.to_datetime(e_date))]
             
-        if df.empty:
-            st.warning("⚠️ No data available for this period. Try adjusting your date range.")
+        if df_filtered.empty:
+            st.warning("⚠️ No data available for this specific period. Try adjusting your date range.")
         else:
-            if report_type == "Daily":
-                df['Time_Period'] = df['Date'].dt.date.astype(str)
-            elif report_type == "Weekly":
-                df['Time_Period'] = df['Date'].dt.strftime('%Y-W%V')
-            elif report_type == "Monthly":
-                df['Time_Period'] = df['Date'].dt.strftime('%Y-%m')
-            elif report_type == "Yearly":
-                df['Time_Period'] = df['Date'].dt.year.astype(str)
+            # Format time period for X-axis based on data range size
+            days_diff = (e_date - s_date).days
+            if days_diff <= 90:
+                df_filtered['Time_Period'] = df_filtered['Date'].dt.date.astype(str)
             else:
-                df['Time_Period'] = df['Date'].dt.date.astype(str)
+                # Group by Month-Year if range is large (Yearly / All-Time) to keep chart clean
+                df_filtered['Time_Period'] = df_filtered['Date'].dt.strftime('%Y-%m')
 
-            agg_time = df.groupby('Time_Period')[['Clicks', 'Redeemed_Vouchers', 'Actual_Trips', 'New_Customers']].sum().reset_index()
+            # Aggregate data for KPIs
+            agg_time = df_filtered.groupby('Time_Period')[['Clicks', 'Redeemed_Vouchers', 'Actual_Trips', 'New_Customers']].sum().reset_index()
             agg_time = agg_time.sort_values('Time_Period')
             
+            # KPI Metrics (Now completely dynamic based on filtered date!)
             total_red = agg_time['Redeemed_Vouchers'].sum()
             total_trp = agg_time['Actual_Trips'].sum()
             total_new = agg_time['New_Customers'].sum()
             conv_rate = (total_trp / total_red * 100) if total_red > 0 else 0
             
+            st.markdown("### 📈 Key Performance Indicators (KPIs)")
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Total Vouchers Redeemed", f"{total_red:,}")
-            m2.metric("Total Actual Trips", f"{total_trp:,}")
+            m2.metric("Actual Trips (Vouchers Used)", f"{total_trp:,}")
             m3.metric("New Customers Acquired", f"{total_new:,}")
             m4.metric("Trip Conversion Rate", f"{conv_rate:.1f}%")
             
             st.markdown("---")
             
+            # Helper function for rendering Plotly charts dynamically
+            def render_chart(chart_type, data, x_col, y_cols, title, is_barmode_group=False):
+                colors = ["#999999", "#FF5A00", "#00A86B"]
+                if chart_type == "Line Chart":
+                    return px.line(data, x=x_col, y=y_cols, markers=True, title=title, color_discrete_sequence=colors)
+                elif chart_type == "Area Chart":
+                    return px.area(data, x=x_col, y=y_cols, title=title, color_discrete_sequence=colors)
+                elif chart_type == "Bar Chart":
+                    if is_barmode_group:
+                        return px.bar(data, x=x_col, y=y_cols, barmode='group', title=title, color_discrete_sequence=colors)
+                    else:
+                        return px.bar(data, x=x_col, y=y_cols, title=title, color_discrete_sequence=colors)
+
             col_chart1, col_chart2 = st.columns(2)
             
             with col_chart1:
-                fig_trend = px.line(
-                    agg_time, x='Time_Period', y=['Redeemed_Vouchers', 'Actual_Trips', 'New_Customers'],
-                    markers=True, title="Performance & Acquisition Trend",
-                    color_discrete_sequence=["#999999", "#FF5A00", "#00A86B"]
-                )
+                fig_trend = render_chart(chart_1_type, agg_time, 'Time_Period', ['Redeemed_Vouchers', 'Actual_Trips', 'New_Customers'], "Performance & Acquisition Trend")
                 fig_trend.update_layout(template="plotly_white", xaxis_title="Time Period", yaxis_title="Count")
                 st.plotly_chart(fig_trend, use_container_width=True)
                 
             with col_chart2:
-                agg_plat = df.groupby('Platform')[['Redeemed_Vouchers', 'Actual_Trips', 'New_Customers']].sum().reset_index()
-                fig_plat = px.bar(
-                    agg_plat, x='Platform', y=['Redeemed_Vouchers', 'Actual_Trips', 'New_Customers'],
-                    barmode='group', title="Platform & Channel Breakdown",
-                    color_discrete_sequence=["#CCCCCC", "#FF5A00", "#00A86B"]
-                )
+                agg_plat = df_filtered.groupby('Platform')[['Redeemed_Vouchers', 'Actual_Trips', 'New_Customers']].sum().reset_index()
+                fig_plat = render_chart(chart_2_type, agg_plat, 'Platform', ['Redeemed_Vouchers', 'Actual_Trips', 'New_Customers'], "Platform & Channel Breakdown", is_barmode_group=True)
                 fig_plat.update_layout(template="plotly_white", yaxis_title="Count")
                 st.plotly_chart(fig_plat, use_container_width=True)
+            
+            # Export Report Feature
+            st.markdown("### 📥 Export Options")
+            csv_data = df_filtered.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="Download Report as CSV (Open in Excel)",
+                data=csv_data,
+                file_name=f"DiDi_Marketing_Report_{s_date}_to_{e_date}.csv",
+                mime='text/csv',
+                type="primary"
+            )
